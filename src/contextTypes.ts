@@ -23,6 +23,11 @@ export type NodeDragEventHandler<T = HTMLDivElement> = (
   node: NodeInstance,
 ) => void;
 
+export type NodeClassicDragEventHandler = (
+  e: React.MouseEvent<HTMLSpanElement>,
+  node: NodeInstance,
+) => void;
+
 export interface TreeContextProps {
   prefixCls: string;
   selectable: boolean;
@@ -30,6 +35,7 @@ export interface TreeContextProps {
   icon: IconType;
   switcherIcon: IconType;
   draggable: boolean;
+  classicDraggable: boolean;
   checkable: boolean | React.ReactNode;
   checkStrictly: boolean;
   disabled: boolean;
@@ -58,6 +64,9 @@ export interface TreeContextProps {
   onNodeDragLeave: NodeDragEventHandler;
   onNodeDragEnd: NodeDragEventHandler;
   onNodeDrop: NodeDragEventHandler;
+  onNodeMouseDown: NodeDragEventHandler;
+  onNodeClassicMouseEnter: NodeClassicDragEventHandler;
+  onClassicNodeDrop: NodeDragEventHandler;
 }
 
 export const TreeContext: React.Context<TreeContextProps | null> = React.createContext(null);

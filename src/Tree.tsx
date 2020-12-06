@@ -73,6 +73,7 @@ export interface TreeProps {
   checkable?: boolean | React.ReactNode;
   checkStrictly?: boolean;
   draggable?: boolean;
+  classicDraggable?: boolean;
   defaultExpandParent?: boolean;
   autoExpandParent?: boolean;
   defaultExpandAll?: boolean;
@@ -173,6 +174,9 @@ interface TreeState {
   listChanging: boolean;
 
   prevProps: TreeProps;
+
+  // classic dragging
+  classicDragging: boolean;
 }
 
 class Tree extends React.Component<TreeProps, TreeState> {
@@ -224,9 +228,15 @@ class Tree extends React.Component<TreeProps, TreeState> {
     listChanging: false,
 
     prevProps: null,
+
+    classicDragging: false,
   };
 
   dragNode: NodeInstance;
+
+  classicDragNode: NodeInstance;
+
+  shadowElement: HTMLElement;
 
   listRef = React.createRef<NodeListRef>();
 
@@ -344,9 +354,167 @@ class Tree extends React.Component<TreeProps, TreeState> {
     return newState;
   }
 
+  componentDidMount() {
+    document.addEventListener('mousemove', this.classicDragMove);
+    document.addEventListener('mouseup', this.classicDragEnd);
+  }
+
   componentWillUnmount() {
     this.destroyed = true;
+    document.removeEventListener('mouseup', this.classicDragEnd);
+    document.removeEventListener('mousedown', this.classicDragMove);
   }
+
+  classicDragMove = e => {
+    if (!this.state.classicDragging) return;
+    // drag move
+    if (!this.shadowElement && this.classicDragNode) {
+      this.shadowElement = document.createElement('div');
+      this.shadowElement.innerText = 'test';
+      this.shadowElement.className = `${this.props.prefixCls}-classic-drag-element`;
+      // this.shadowElement = this.createShadowDragElement()
+      document.body.appendChild(this.shadowElement);
+    }
+
+    this.shadowElement.style.top = `${e.clientY}px`;
+    this.shadowElement.style.left = `${e.clientX}px`;
+  };
+
+  classicDragEnd = () => {
+    this.setState({
+      classicDragging: false,
+      dragging: false,
+    });
+    if (this.shadowElement) {
+      this.destroyShadowElem();
+    }
+
+    setTimeout(() => {
+      this.classicDragNode = null;
+    }, 200);
+  };
+
+  destroyShadowElem() {
+    document.body.removeChild(this.shadowElement);
+    this.shadowElement = null;
+  }
+
+  // createShadowDragElement() {
+  //   // const newElem = React.cloneElement(this.classicDragNode.domRef)
+  //   // this.shadowElement = this.classicDragElement
+  // }
+
+  onNodeMouseDown = (e, treeNode) => {
+    this.setState({
+      classicDragging: true,
+      dragging: false,
+    });
+    setTimeout(() => {
+      if (this.state.classicDragging) {
+        this.classicDragNode = treeNode;
+      }
+    }, 100);
+  };
+
+  onNodeClassicMouseEnter = (event: React.MouseEvent<HTMLSpanElement>, node: NodeInstance) => {
+    if (!this.classicDragNode) return;
+
+    const { expandedKeys, keyEntities, dragNodesKeys } = this.state;
+    const { pos, eventKey } = node.props;
+    const { onDragEnter } = this.props;
+
+    if (dragNodesKeys.indexOf(eventKey) !== -1) return;
+
+    const dropPosition = calcDropPosition(event, node);
+    // Skip if drag node is self
+    if (this.classicDragNode.props.eventKey === eventKey && dropPosition === 0) {
+      this.setState({
+        dragOverNodeKey: '',
+        dropPosition: null,
+      });
+      return;
+    }
+
+    // Ref: https://github.com/react-component/tree/issues/132
+    // Add timeout to let onDragLevel fire before onDragEnter,
+    // so that we can clean drag props for onDragLeave node.
+    // Macro task for this:
+    // https://html.spec.whatwg.org/multipage/webappapis.html#clean-up-after-running-script
+    setTimeout(() => {
+      // Update drag over node
+      this.setState({
+        dragOverNodeKey: eventKey,
+        dropPosition,
+      });
+
+      // Side effect for delay drag
+      if (!this.delayedDragEnterLogic) {
+        this.delayedDragEnterLogic = {};
+      }
+      Object.keys(this.delayedDragEnterLogic).forEach(key => {
+        clearTimeout(this.delayedDragEnterLogic[key]);
+      });
+      this.delayedDragEnterLogic[pos] = window.setTimeout(() => {
+        if (!this.state.classicDragging) return;
+
+        let newExpandedKeys = [...expandedKeys];
+        const entity = keyEntities[eventKey];
+
+        if (entity && (entity.children || []).length) {
+          newExpandedKeys = arrAdd(expandedKeys, eventKey);
+        }
+
+        if (!('expandedKeys' in this.props)) {
+          this.setExpandedKeys(newExpandedKeys);
+        }
+
+        if (onDragEnter) {
+          onDragEnter({
+            event: null,
+            node: convertNodePropsToEventData(node.props),
+            expandedKeys: newExpandedKeys,
+          });
+        }
+      }, 400);
+    }, 0);
+  };
+
+  classicDragNodeLeave = () => {};
+
+  onClassicNodeDrop = (event, node) => {
+    if (!this.classicDragNode) {
+      return;
+    }
+    const dragNode = this.classicDragNode;
+    this.classicDragNode = null;
+
+    const { dragNodesKeys = [], dropPosition } = this.state;
+    const { onDrop } = this.props;
+    const { eventKey, pos } = node.props;
+
+    if (dragNodesKeys.indexOf(eventKey) !== -1) {
+      warning(false, "Can not drop to dragNode(include it's children node)");
+      return;
+    }
+
+    const posArr = posToArr(pos);
+    event.persist();
+    const dropResult = {
+      event,
+      node: convertNodePropsToEventData(node.props),
+      dragNode: dragNode ? convertNodePropsToEventData(dragNode.props) : null,
+      dragNodesKeys: dragNodesKeys.slice(),
+      dropPosition: dropPosition + Number(posArr[posArr.length - 1]),
+      dropToGap: false,
+    };
+
+    if (dropPosition !== 0) {
+      dropResult.dropToGap = true;
+    }
+    if (onDrop) {
+      onDrop(dropResult);
+    }
+  };
 
   onNodeDragStart: NodeDragEventHandler = (event, node) => {
     const { expandedKeys, keyEntities } = this.state;
@@ -708,6 +876,7 @@ class Tree extends React.Component<TreeProps, TreeState> {
             loadingKeys: newLoadingKeys,
           });
 
+          // tslint:disable-next-line
           resolve();
         });
 
@@ -1048,6 +1217,7 @@ class Tree extends React.Component<TreeProps, TreeState> {
       icon,
       switcherIcon,
       draggable,
+      classicDraggable,
       checkable,
       checkStrictly,
       disabled,
@@ -1071,6 +1241,7 @@ class Tree extends React.Component<TreeProps, TreeState> {
           icon,
           switcherIcon,
           draggable,
+          classicDraggable,
           checkable,
           checkStrictly,
           disabled,
@@ -1096,6 +1267,9 @@ class Tree extends React.Component<TreeProps, TreeState> {
           onNodeDragLeave: this.onNodeDragLeave,
           onNodeDragEnd: this.onNodeDragEnd,
           onNodeDrop: this.onNodeDrop,
+          onNodeMouseDown: this.onNodeMouseDown,
+          onNodeClassicMouseEnter: this.onNodeClassicMouseEnter,
+          onClassicNodeDrop: this.onClassicNodeDrop,
         }}
       >
         <div
@@ -1128,6 +1302,7 @@ class Tree extends React.Component<TreeProps, TreeState> {
             onActiveChange={this.onActiveChange}
             onListChangeStart={this.onListChangeStart}
             onListChangeEnd={this.onListChangeEnd}
+            onNodeMouseDown={this.onNodeMouseDown}
             onContextMenu={onContextMenu}
             {...this.getTreeNodeRequiredProps()}
             {...domProps}

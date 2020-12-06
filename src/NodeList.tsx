@@ -87,6 +87,8 @@ interface NodeListProps {
 
   onListChangeStart: () => void;
   onListChangeEnd: () => void;
+  onNodeMouseDown: (e, node) => void;
+  onNodeClassicMouseEnter: (e, node, nodeInstance) => void;
 }
 
 /**

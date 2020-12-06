@@ -121,9 +121,13 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
 
   onMouseEnter = (e: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
     const {
-      context: { onNodeMouseEnter },
+      context: { onNodeMouseEnter, onNodeClassicMouseEnter },
     } = this.props;
     onNodeMouseEnter(e, convertNodePropsToEventData(this.props));
+
+    if (onNodeClassicMouseEnter) {
+      onNodeClassicMouseEnter(e, this);
+    }
   };
 
   onMouseLeave = (e: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
@@ -315,6 +319,13 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
     return treeSelectable;
   }
 
+  onMouseDown = e => {
+    const {
+      context: { onNodeMouseDown },
+    } = this.props;
+    onNodeMouseDown(e, this);
+  };
+
   // Switcher
   renderSwitcher = () => {
     const { expanded, switcherIcon: switcherIconFromProps } = this.props;
@@ -345,6 +356,14 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
           : switcherIcon}
       </span>
     );
+  };
+
+  onMouseUp = e => {
+    const {
+      context: { onClassicNodeDrop },
+    } = this.props;
+
+    onClassicNodeDrop(e, this);
   };
 
   // Checkbox
@@ -442,6 +461,7 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
           `${wrapClass}-${this.getNodeState() || 'normal'}`,
           !disabled && (selected || dragNodeHighlight) && `${prefixCls}-node-selected`,
           !disabled && draggable && 'draggable',
+          'classic-draggable',
         )}
         draggable={(!disabled && draggable) || undefined}
         aria-grabbed={(!disabled && draggable) || undefined}
@@ -480,7 +500,7 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
       ...otherProps
     } = this.props;
     const {
-      context: { prefixCls, filterTreeNode, draggable, keyEntities },
+      context: { prefixCls, filterTreeNode, draggable, keyEntities, classicDraggable },
     } = this.props;
     const disabled = this.isDisabled();
     const dataOrAriaAttributeProps = getDataAndAria(otherProps);
@@ -511,6 +531,8 @@ class InternalTreeNode extends React.Component<InternalTreeNodeProps, TreeNodeSt
         onDrop={draggable ? this.onDrop : undefined}
         onDragEnd={draggable ? this.onDragEnd : undefined}
         onMouseMove={onMouseMove}
+        onMouseUp={classicDraggable ? this.onMouseUp : undefined}
+        onMouseDown={classicDraggable ? this.onMouseDown : undefined}
         {...dataOrAriaAttributeProps}
       >
         <Indent prefixCls={prefixCls} level={level} isStart={isStart} isEnd={isEnd} />
